@@ -28,9 +28,6 @@ from vix import vixlib
 from vix import vixutils
 
 
-#CONF.import_opt('use_cow_images', 'nova.virt.driver')
-
-
 class VixDriverTestCase(unittest.TestCase):
     """Unit tests for Nova VIX driver"""
 
@@ -225,7 +222,29 @@ class VixDriverTestCase(unittest.TestCase):
         vixutils.reboot.assert_called_once()
 
     def test_destroy(self):
+        fake_instance = mock.MagicMock()
+        fake_network_info = mock.MagicMock()
+        self._VixDriver._delete_existing_instance = mock.MagicMock()
+        self._VixDriver.destroy(fake_instance, fake_network_info)
+        self._VixDriver._delete_existing_instance.assert_called_with(
+            fake_instance['name'], True)
 
+    def test_get_info(self):
+        fake_instance = mock.MagicMock()
+
+        vixutils.get_power_state = mock.MagicMock(
+            return_value=vixlib.VIX_POWERSTATE_POWERED_ON)
+
+        response = self._VixDriver.get_info(fake_instance)
+        print response
+        vixutils.get_power_state.assert_called_once()
+        self.assertIsNotNone(response)
+
+    def test_get_hypervisor_version(self):
+        self._conn.get_software_version.return_value = 10
+        response = self._VixDriver._get_hypervisor_version()
+        self._conn.get_software_version.assert_called_once()
+        self.assertEqual(response, 10)
 
 
 
