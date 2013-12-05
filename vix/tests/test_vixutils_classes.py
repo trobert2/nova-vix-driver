@@ -841,9 +841,10 @@ class VixUtilsTestCase(unittest.TestCase):
         os.path.exists = mock.MagicMock()
         os.path.exists.return_value = True
 
-        self._VixConnection.vm_exists(fake_path)
+        response = self._VixConnection.vm_exists(fake_path)
 
         os.path.exists.assert_called_with(fake_path)
+        self.assertEqual(response, True)
 
     def test_delete_vm_files(self):
         fake_path = 'fake/path'
