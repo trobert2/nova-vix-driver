@@ -15,14 +15,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import ctypes
 import mock
 import os
 import re
 import unittest
-import shutil
 import sys
-import time
 
 if sys.platform == 'win32':
     import _winreg
@@ -36,13 +33,6 @@ from vix import vixlib
 class VixUtilsTestCase(unittest.TestCase):
     """Unit tests for utility class"""
 
-    def setUp(self):
-        ctypes = mock.MagicMock()
-        self.vm_handle = ctypes.c_int()
-        self._VixVM = vixutils.VixVM(self.vm_handle)
-        self._VixSnapshot = vixutils.VixSnapshot(self.vm_handle)
-        self._VixConnection = vixutils.VixConnection()
-
     def test_check_job_err_code(self):
         fake_err = 1
         vixlib.Vix_GetErrorText = mock.MagicMock()
@@ -50,840 +40,191 @@ class VixUtilsTestCase(unittest.TestCase):
         self.assertRaises(utils.VixException, vixutils._check_job_err_code,
                           fake_err)
 
-    ########### TESTING VixVM CLASS ###########
-    def test_close_VixVM(self):
-        fake_handle = mock.Mock()
-        self._VixVM._vm_handle = fake_handle
-        vixlib.Vix_ReleaseHandle = mock.MagicMock()
+    def test_load_config_file_values(self):
+        fake_path = 'fake/path'
+        match_mock = mock.MagicMock()
 
-        self._VixVM.close()
+        re.match = mock.MagicMock()
+        re.match.return_value = match_mock
 
-        vixlib.Vix_ReleaseHandle.assert_called_once()
-        self.assertIsNone(self._VixVM._vm_handle)
+        with mock.patch('vix.vixutils.open',
+                        mock.mock_open(read_data='fake data'),
+                        create=True) as m:
+            response = vixutils.load_config_file_values(fake_path)
+            print m.mock_calls
+            m.assert_called_with('fake/path', 'rb')
+            m().readlines.assert_called_once()
 
-    def test_get_power_state(self):
-        fake_power_state = mock.MagicMock()
-        ctypes_mock = mock.Mock()
+        self.assertIsNotNone(response)
 
-        ctypes.c_int = mock.MagicMock()
-        ctypes.c_int.return_value = fake_power_state
-        vixlib.Vix_GetProperties = mock.MagicMock()
-        vixlib.Vix_GetProperties.return_value = None
-        vixutils._check_job_err_code = mock.MagicMock()
-        ctypes.byref = mock.MagicMock()
-        ctypes.byref.return_value = ctypes_mock
+    def _test_get_player_preferences_file_path(self, platform):
+        sys.platform = platform
+        os.getenv = mock.MagicMock()
+        os.getenv.return_value = 'APPDATA'
+        os.path.join = mock.MagicMock()
+        os.path.join.return_value = 'APPDATA/VMWare/preferences.ini'
+        os.path.expanduser = mock.MagicMock()
+        os.path.expanduser.return_value = "~/.vmware/preferences"
 
-        self._VixVM.get_power_state()
+        response = vixutils._get_player_preferences_file_path()
 
-        ctypes.c_int.assert_called_once()
-        vixlib.Vix_GetProperties.assert_called_with(
-            self._VixVM._vm_handle, vixlib.VIX_PROPERTY_VM_POWER_STATE,
-            ctypes_mock, vixlib.VIX_PROPERTY_NONE)
-        ctypes.byref.assert_called_once()
-        vixutils._check_job_err_code.assert_called_once_with(None)
-
-    def _test_power_on(self, show_gui):
-        fake_job_handle = mock.MagicMock()
-
-        vixlib.VixVM_PowerOn = mock.MagicMock()
-        vixlib.VixVM_PowerOn.return_value = fake_job_handle
-        vixlib.VixJob_Wait = mock.MagicMock()
-        vixlib.VixJob_Wait.return_value = None
-        vixlib.Vix_ReleaseHandle = mock.MagicMock()
-        vixutils._check_job_err_code = mock.MagicMock()
-
-        self._VixVM.power_on(show_gui)
-        if show_gui:
-            options = vixlib.VIX_VMPOWEROP_LAUNCH_GUI
+        if platform == "win32":
+            os.getenv.assert_called_with('APPDATA')
+            os.path.join.assert_called_with('APPDATA', "VMWare",
+                                            "preferences.ini")
+            self.assertEqual(response, 'APPDATA/VMWare/preferences.ini')
         else:
-            options = vixlib.VIX_VMPOWEROP_NORMAL
-        vixlib.VixVM_PowerOn.assert_called_with(self._VixVM._vm_handle,
-                                                options,
-                                                vixlib.VIX_INVALID_HANDLE,
-                                                None, None)
-        vixlib.VixJob_Wait.assert_called_with(fake_job_handle,
-                                              vixlib.VIX_PROPERTY_NONE)
-        vixlib.Vix_ReleaseHandle.assert_called_with(fake_job_handle)
-        vixutils._check_job_err_code.assert_called_once_with(None)
+            os.path.expanduser.assert_called_with("~/.vmware/preferences")
+            self.assertEqual(response, "~/.vmware/preferences")
 
-    def test_power_on_with_gui(self):
-        self._test_power_on(True)
+    def test_get_player_preferences_file_path_win(self):
+        self._test_get_player_preferences_file_path('win32')
 
-    def test_power_on_without_gui(self):
-        self._test_power_on(False)
+    def test_get_player_preferences_file_path_darwin(self):
+        self._test_get_player_preferences_file_path('linux')
 
-    def test_pause(self):
-        fake_job_handle = mock.MagicMock()
+    def _test_get_install_dir(self, platform):
+        fake_key = mock.MagicMock()
+        fake_query_response = mock.MagicMock()
 
-        vixlib.VixVM_Pause = mock.MagicMock()
-        vixlib.VixVM_Pause.return_value = fake_job_handle
-        vixlib.VixJob_Wait = mock.MagicMock()
-        vixlib.VixJob_Wait.return_value = None
-        vixlib.Vix_ReleaseHandle = mock.MagicMock()
-        vixutils._check_job_err_code = mock.MagicMock()
+        sys.platform = platform
+        _winreg.OpenKey = mock.MagicMock()
+        _winreg.OpenKey.return_value = fake_key
+        _winreg.QueryValueEx = mock.MagicMock()
+        _winreg.QueryValueEx.return_value = fake_query_response
 
-        self._VixVM.pause()
-
-        vixlib.VixVM_Pause.assert_called_with(self._VixVM._vm_handle, 0,
-                                              vixlib.VIX_INVALID_HANDLE,
-                                              None, None)
-        vixlib.VixJob_Wait.assert_called_with(fake_job_handle,
-                                              vixlib.VIX_PROPERTY_NONE)
-        vixlib.Vix_ReleaseHandle.assert_called_with(fake_job_handle)
-        vixutils._check_job_err_code.assert_called_once_with(None)
-
-    def test_unpause(self):
-        fake_job_handle = mock.MagicMock()
-
-        vixlib.VixVM_Unpause = mock.MagicMock()
-        vixlib.VixVM_Unpause.return_value = fake_job_handle
-        vixlib.VixJob_Wait = mock.MagicMock()
-        vixlib.VixJob_Wait.return_value = None
-        vixlib.Vix_ReleaseHandle = mock.MagicMock()
-        vixutils._check_job_err_code = mock.MagicMock()
-
-        self._VixVM.unpause()
-
-        vixlib.VixVM_Unpause.assert_called_with(self._VixVM._vm_handle, 0,
-                                              vixlib.VIX_INVALID_HANDLE,
-                                              None, None)
-        vixlib.VixJob_Wait.assert_called_with(fake_job_handle,
-                                              vixlib.VIX_PROPERTY_NONE)
-        vixlib.Vix_ReleaseHandle.assert_called_with(fake_job_handle)
-        vixutils._check_job_err_code.assert_called_once_with(None)
-
-
-    def test_suspend(self):
-        fake_job_handle = mock.MagicMock()
-
-        vixlib.VixVM_Suspend = mock.MagicMock()
-        vixlib.VixVM_Suspend.return_value = fake_job_handle
-        vixlib.VixJob_Wait = mock.MagicMock()
-        vixlib.VixJob_Wait.return_value = None
-        vixlib.Vix_ReleaseHandle = mock.MagicMock()
-        vixutils._check_job_err_code = mock.MagicMock()
-
-        self._VixVM.suspend()
-
-        vixlib.VixVM_Suspend.assert_called_with(self._VixVM._vm_handle, 0,
-                                              None, None)
-        vixlib.VixJob_Wait.assert_called_with(fake_job_handle,
-                                              vixlib.VIX_PROPERTY_NONE)
-        vixlib.Vix_ReleaseHandle.assert_called_with(fake_job_handle)
-        vixutils._check_job_err_code.assert_called_once_with(None)
-
-    def _test_reboot(self, soft):
-        fake_job_handle = mock.MagicMock()
-
-        vixlib.VixVM_Reset = mock.MagicMock()
-        vixlib.VixVM_Reset.return_value = fake_job_handle
-        vixlib.VixJob_Wait = mock.MagicMock()
-        vixlib.VixJob_Wait.return_value = None
-        vixlib.Vix_ReleaseHandle = mock.MagicMock()
-        vixutils._check_job_err_code = mock.MagicMock()
-
-        self._VixVM.reboot(soft)
-
-        if soft:
-            power_op = vixlib.VIX_VMPOWEROP_FROM_GUEST
+        if platform == "darwin":
+            response = vixutils._get_install_dir()
+            self.assertEqual(response, "/Applications/VMware Fusion.app")
+        elif platform == "win32":
+            response = vixutils._get_install_dir()
+            _winreg.OpenKey.assert_called_with(
+                _winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\VMware, Inc.\VMware"
+                             " Workstation")
+            _winreg.QueryValueEx.assert_called_with(fake_key.__enter__(),
+                                                    "InstallPath")
+            self.assertEqual(response, fake_query_response[0])
         else:
-            power_op = vixlib.VIX_VMPOWEROP_NORMAL
+            self.assertRaises(NotImplementedError, vixutils._get_install_dir)
 
-        vixlib.VixVM_Reset.assert_called_with(self._VixVM._vm_handle,
-                                              power_op,
-                                              None, None)
-        vixlib.VixJob_Wait.assert_called_with(fake_job_handle,
-                                              vixlib.VIX_PROPERTY_NONE)
-        vixlib.Vix_ReleaseHandle.assert_called_with(fake_job_handle)
-        vixutils._check_job_err_code.assert_called_once_with(None)
+    def test_get_install_dir_win(self):
+        self._test_get_install_dir(platform="win32")
 
-    def test_reboot_soft(self):
-        self._test_reboot(True)
+    def test_get_install_dir_darwin(self):
+        self._test_get_install_dir(platform="darwin")
 
-    def test_reboot_hard(self):
-        self._test_reboot(False)
+    def test_get_install_dir_other(self):
+        self._test_get_install_dir(platform=None)
 
-    def _test_power_off(self, soft):
-        fake_job_handle = mock.MagicMock()
+    def _test_get_vix_bin_path(self, platform):
+        sys.platform = platform
 
-        vixlib.VixVM_PowerOff = mock.MagicMock()
-        vixlib.VixVM_PowerOff.return_value = fake_job_handle
-        vixlib.VixJob_Wait = mock.MagicMock()
-        vixlib.VixJob_Wait.return_value = None
-        vixlib.Vix_ReleaseHandle = mock.MagicMock()
-        vixutils._check_job_err_code = mock.MagicMock()
+        vixutils._get_install_dir = mock.MagicMock()
+        vixutils._get_install_dir.return_value = 'fake/path/'
+        os.path.join = mock.MagicMock()
+        os.path.join.return_value = 'fake/path/' + 'Contents/Library'
 
-        self._VixVM.power_off(soft)
-
-        if soft:
-            power_op = vixlib.VIX_VMPOWEROP_FROM_GUEST
+        if platform == "darwin":
+            response = vixutils.get_vix_bin_path()
+            self.assertEqual(response, 'fake/path/' + 'Contents/Library')
+        elif platform == "win32":
+            response = vixutils.get_vix_bin_path()
+            os.path.join.assert_called_once()
+            self.assertEqual(response, 'fake/path/')
         else:
-            power_op = vixlib.VIX_VMPOWEROP_NORMAL
+            response = vixutils.get_vix_bin_path()
+            self.assertEqual(response, "/usr/bin")
 
-        vixlib.VixVM_PowerOff.assert_called_with(self._VixVM._vm_handle,
-                                              power_op,
-                                              None, None)
-        vixlib.VixJob_Wait.assert_called_with(fake_job_handle,
-                                              vixlib.VIX_PROPERTY_NONE)
-        vixlib.Vix_ReleaseHandle.assert_called_with(fake_job_handle)
-        vixutils._check_job_err_code.assert_called_once_with(None)
+    def test_get_vix_bin_path_win(self):
+        self._test_get_vix_bin_path('win32')
 
-    def test_power_off_soft(self):
-        self._test_reboot(True)
+    def test_get_vix_bin_path_darwin(self):
+        self._test_get_vix_bin_path('darwin')
 
-    def test_power_off_hard(self):
-        self._test_reboot(False)
+    def test_get_vix_bin_path_other(self):
+        self._test_get_vix_bin_path('linux')
 
-    def test_wait_for_tools_in_guest(self):
-        timeout_seconds = 99999
-        fake_job_handle = mock.MagicMock()
+    def test_remove_vmx_value(self):
+        fake_path = 'fake/path'
+        fake_name = 'fake_name'
+        utils.remove_lines = mock.MagicMock()
+        vixutils.remove_vmx_value(fake_path, fake_name)
+        utils.remove_lines.assert_called_with(fake_path,
+                                              r"^%s\s*=\s*.*$" % fake_name)
 
-        vixlib.VixVM_WaitForToolsInGuest = mock.MagicMock()
-        vixlib.VixVM_WaitForToolsInGuest.return_value = fake_job_handle
-        vixlib.VixJob_Wait = mock.MagicMock()
-        vixlib.VixJob_Wait.return_value = None
-        vixlib.Vix_ReleaseHandle = mock.MagicMock()
-        vixutils._check_job_err_code = mock.MagicMock()
-
-        self._VixVM.wait_for_tools_in_guest(timeout_seconds)
-
-        vixlib.VixVM_WaitForToolsInGuest.assert_called_with(
-            self._VixVM._vm_handle, timeout_seconds, None, None)
-        vixlib.VixJob_Wait.assert_called_with(fake_job_handle,
-                                              vixlib.VIX_PROPERTY_NONE)
-        vixlib.Vix_ReleaseHandle.assert_called_with(fake_job_handle)
-        vixutils._check_job_err_code.assert_called_once_with(None)
-
-    def _test_get_guest_ip_address(self, read_value):
-        fake_job_handle = mock.MagicMock()
-        ctypes_byref_mock = mock.MagicMock()
-        timeout_seconds = 0
-
-        time.time = mock.MagicMock()
-
-        self._VixVM.wait_for_tools_in_guest = mock.MagicMock()
-        vixlib.VixVM_ReadVariable = mock.MagicMock()
-        vixlib.VixVM_ReadVariable.return_value = fake_job_handle
-        ctypes.c_char_p = mock.MagicMock()
-        ctypes.c_char_p.return_value = read_value
-        ctypes.byref = mock.MagicMock()
-        ctypes.byref.return_value = ctypes_byref_mock
-        vixlib.VixJob_Wait = mock.MagicMock()
-        vixlib.VixJob_Wait.return_value = None
-        vixlib.Vix_ReleaseHandle = mock.MagicMock()
-        vixutils._check_job_err_code = mock.MagicMock()
-        time.sleep = mock.MagicMock()
-
-        if
-
-        self._VixVM.get_guest_ip_address(timeout_seconds)
-
-        self._VixVM.wait_for_tools_in_guest.assert_called_with(timeout_seconds)
-        time.time.assert_called_once()
-        vixlib.VixVM_ReadVariable.assert_called_with(self._VixVM._vm_handle,
-                                                     timeout_seconds, None,
-                                                     None)
-        vixlib.VixJob_Wait.assert_called_with(
-            fake_job_handle,
-            vixlib.VIX_PROPERTY_JOB_RESULT_VM_VARIABLE_STRING,
-            ctypes_byref_mock, vixlib.VIX_PROPERTY_NONE)
-        ctypes.byref.assert_called_with(read_value)
-        vixlib.Vix_ReleaseHandle.assert_called_with(fake_job_handle)
-        vixutils._check_job_err_code.assert_called_with(None)
-
-
-    def test_get_guest_ip_address(self):
-        read_value = mock.MagicMock()
-        self._test_get_guest_ip_address(read_value=read_value)
-
-
-    ########### TESTING VixSnapshot CLASS ###########
-    def test_close_VixSnapshot(self):
-        fake_handle = mock.Mock()
-        self._VixSnapshot._snapshot_handle = fake_handle
-        vixlib.Vix_ReleaseHandle = mock.MagicMock()
-
-        self._VixSnapshot.close()
-
-        vixlib.Vix_ReleaseHandle.assert_called_once()
-        self.assertIsNone(self._VixSnapshot._snapshot_handle)
-
-    ########### TESTING VixConnection CLASS ###########
-    def _test_unregister_vm_and_delete_files(self, destroy_disks):
-        fake_path ='fake/path'
-
-        mock_vm = mock.MagicMock()
-        self._VixConnection.open_vm = mock.MagicMock()
-        self._VixConnection.open_vm.return_value = mock_vm
-
-        mock_vm.get_power_state = mock.MagicMock()
-        mock_vm.get_power_state.return_value = vixlib.VIX_POWERSTATE_POWERED_OFF
-        vixutils.VixConnection.unregister_vm = mock.MagicMock()
-        vixutils.VixConnection.delete_vm_files = mock.MagicMock()
-
-        self._VixConnection.unregister_vm_and_delete_files(
-            fake_path, destroy_disks=destroy_disks)
-
-        self._VixConnection.unregister_vm.assert_called_with(fake_path)
-        if destroy_disks:
-            self._VixConnection.delete_vm_files.assert_called_with(
-                fake_path)
-
-    def test_unregister_vm_and_delete_files_destroy_disks(self):
-        self._test_unregister_vm_and_delete_files(destroy_disks=True)
-
-
-    def test_unregister_vm_and_delete_files_no_destroy_disks(self):
-        self._test_unregister_vm_and_delete_files(destroy_disks=False)
-
-    def test_connect(self):
-        job_handle = mock.MagicMock()
-        host_handle = mock.MagicMock()
-
-        vixlib.VixHost_Connect = mock.MagicMock()
-        vixlib.VixHost_Connect.return_value = job_handle
-        vixlib.VixHandle = mock.MagicMock()
-        vixlib.VixHandle.return_value = host_handle
-
-        vixutils.get_vix_host_type = mock.MagicMock()
-        ctypes.byref = mock.MagicMock()
-        vixlib.VixJob_Wait = mock.MagicMock()
-        vixlib.VixJob_Wait.return_value = None
-        vixlib.Vix_ReleaseHandle = mock.MagicMock()
-        vixutils._check_job_err_code = mock.MagicMock()
-
-        self._VixConnection.connect()
-        vixlib.VixHost_Connect.assert_called_with(vixlib.VIX_API_VERSION,
-                                                  vixutils.get_vix_host_type(),
-                                                  None, 0, None, None, 0,
-                                                  vixlib.VIX_INVALID_HANDLE,
-                                                  None, None)
-        vixlib.Vix_ReleaseHandle.assert_called_with(job_handle)
-        vixutils._check_job_err_code.assert_called_with(None)
-
-        self.assertEqual(self._VixConnection._host_handle, host_handle)
-
-    def test_open_vm(self):
-        fake_path ='fake/path'
-        mock_job_handle = mock.MagicMock()
-        mock_vm_handle = mock.MagicMock()
-
-        vixlib.VixVM_Open = mock.MagicMock()
-        vixlib.VixVM_Open.return_value = mock_job_handle
-        vixlib.VixHandle = mock.MagicMock()
-        vixlib.VixHandle.return_value = mock_vm_handle
-        vixlib.VixJob_Wait = mock.MagicMock()
-        vixlib.VixJob_Wait.return_value = None
-        ctypes.byref = mock.MagicMock()
-        #TODO: with side effect for getting and error than continue
-        vixlib.Vix_ReleaseHandle = mock.MagicMock()
-        vixutils._check_job_err_code = mock.MagicMock()
-
-        response = self._VixConnection.open_vm(fake_path)
-
-        vixlib.VixVM_Open.assert_called_with(
-            self._VixConnection._host_handle, fake_path, None, None)
-        vixlib.VixJob_Wait.assert_called_with(
-            mock_job_handle, vixlib.VIX_PROPERTY_JOB_RESULT_HANDLE,
-            ctypes.byref(mock_vm_handle), vixlib.VIX_PROPERTY_NONE)
-        vixlib.Vix_ReleaseHandle.assert_called_with(mock_job_handle)
-        vixutils._check_job_err_code.assert_called_with(None)
-        self.assertIsInstance(response, vixutils.VixVM)
-
-
-    def test_create_vm(self):
-        fake_path ='fake/path'
-        display_name = 'fake_name'
-        guest_os = 'guest_os'
-        disk_paths = ['fake/disk/path']
-        iso_paths = ['fake/iso/path']
-        floppy_path = 'fake/floppy/path'
-        networks = [('eth', 'mac')]
-        nested_hypervisor = True
-        vnc_enabled = True
-        vnc_port = 9999
-
-        self._VixConnection._get_scsi_config = mock.MagicMock()
-        self._VixConnection._get_ide_config = mock.MagicMock()
-        self._VixConnection._get_networks_config = mock.MagicMock()
-        self._VixConnection._get_nested_hypervisor_config = mock.MagicMock()
-        self._VixConnection._get_vnc_config = mock.MagicMock()
-        os.path.dirname = mock.MagicMock()
-        os.path.dirname.return_value = 'fake_dir'
-        os.path.exists = mock.MagicMock()
-        os.path.exists.return_value = False
-        os.makedirs = mock.MagicMock()
-        os.linesep = mock.MagicMock()
-
+    def test_set_vmx_value(self):
+        fake_path = 'fake/path'
+        fake_name = 'fake_name'
+        fake_value = 'fake_value'
+        utils.replace_text = mock.MagicMock()
+        utils.replace_text.return_value = False
         with mock.patch('vix.vixutils.open', mock.mock_open(),
                         create=True) as m:
 
-            self._VixConnection.create_vm(vmx_path=fake_path,
-                                           display_name=display_name,
-                                           guest_os=guest_os,
-                                           disk_paths=disk_paths,
-                                           iso_paths=iso_paths,
-                                           floppy_path=floppy_path,
-                                           networks=networks,
-                                           nested_hypervisor=nested_hypervisor,
-                                           vnc_enabled=vnc_enabled,
-                                           vnc_port=vnc_port)
-            m.assert_called_with('fake/path', 'wb')
+            vixutils.set_vmx_value(fake_path, fake_name, fake_value)
 
-        self._VixConnection._get_scsi_config.assert_called_with(disk_paths)
-        self._VixConnection._get_ide_config.assert_called_with(iso_paths)
-        self._VixConnection._get_networks_config.assert_called_with(networks)
-        self._VixConnection._get_nested_hypervisor_config.assert_called_once()
-        self._VixConnection._get_vnc_config.assert_called_with(vnc_enabled,
-                                                                vnc_port)
-        os.path.dirname.assert_called_with(fake_path)
-        os.path.exists.assert_called_with('fake_dir')
-        os.makedirs.assert_called_with('fake_dir')
+            m.assert_called_with(fake_path, "ab")
+            m().write.assert_called_with(
+                "%(name)s = \"%(value)s\"" %
+                {'name': fake_name, 'value': fake_value} + os.linesep)
+        utils.replace_text.assert_called_with(
+            fake_path, r"^(%s\s*=\s*)(.*)$" % fake_name,
+            "\\1\"%s\"" % fake_value)
 
-    def test_update_vm(self):
-        fake_path = 'fake/path'
-        display_name = 'fake_name'
-        guest_os = 'guest_os'
-        virtual_hw_version = 10
-        num_vcpus=1
-        cores_per_socket = 1
-        mem_size_mb = 1024
-        disk_paths = ['fake/disk/path']
-        iso_paths = ['fake/iso/path']
-        floppy_path = 'fake/floppy/path'
-        networks = [('eth', 'mac')]
-        boot_order = "hdd,cdrom,floppy"
-        nested_hypervisor = True
-        vnc_enabled = True
-        vnc_port = mock.MagicMock()
-        additional_config = {"fake_config":"fake_value"}
-
-        self._VixConnection._get_scsi_config = mock.MagicMock()
-        self._VixConnection._get_scsi_config.return_value = {
-            "fake disk":"fake path"}
-        self._VixConnection._get_ide_config = mock.MagicMock()
-        self._VixConnection._get_ide_config.return_value = {
-            "fake iso":"fake path"}
-        self._VixConnection._get_floppy_config = mock.MagicMock()
-        self._VixConnection._get_floppy_config.return_value = {
-            "fake floppy":"fake path"}
-        self._VixConnection._get_nested_hypervisor_config = mock.MagicMock()
-        self._VixConnection._get_nested_hypervisor_config.return_value = {
-            "fake hypervisor":"fake value"}
-        self._VixConnection._get_networks_config = mock.MagicMock()
-        self._VixConnection._get_networks_config.return_value = {
-            "fake network":"fake mac"}
-        self._VixConnection._get_vnc_config = mock.MagicMock()
-        self._VixConnection._get_vnc_config.return_value = {
-            "enabled":True,
-            "port":9999,
-            }
-
-        vixutils.remove_vmx_value = mock.MagicMock()
-        vixutils.set_vmx_value = mock.MagicMock()
-
-        self._VixConnection.update_vm(
-            vmx_path=fake_path, display_name=display_name,
-            guest_os=guest_os, virtual_hw_version=virtual_hw_version,
-            num_vcpus=num_vcpus, cores_per_socket=cores_per_socket,
-            mem_size_mb=mem_size_mb, disk_paths=disk_paths,
-            iso_paths=iso_paths, floppy_path=floppy_path, networks=networks,
-            boot_order=boot_order, nested_hypervisor=nested_hypervisor,
-            vnc_enabled=vnc_enabled, vnc_port=vnc_port,
-            additional_config=additional_config)
-
-
-        self._VixConnection._get_scsi_config.assert_called_with(disk_paths)
-        self._VixConnection._get_floppy_config.assert_called_with(floppy_path)
-        self._VixConnection._get_ide_config.assert_called_with(iso_paths)
-        self._VixConnection._get_networks_config.assert_called_with(networks)
-        self._VixConnection._get_nested_hypervisor_config.assert_called_once()
-        self._VixConnection._get_vnc_config.assert_called_with(vnc_enabled,
-                                                                vnc_port)
-
-        vixutils.remove_vmx_value.assert_called_with(
-            fake_path, r"ethernet[\d]+\.[a-zA-Z]+")
-        self.assertEqual(vixutils.set_vmx_value.call_count, 15)
-
-    def test_get_vnc_config(self):
-        vnc_enabled = True
-        vnc_port = 9999
-
-        response = self._VixConnection._get_vnc_config(vnc_enabled, vnc_port)
-
-        self.assertEqual(response, {'RemoteDisplay.vnc.enabled': True,
-                                    'RemoteDisplay.vnc.port': 9999})
-
-    def test_get_scsi_config(self):
-        disk_paths = ['fake/disk/path']
-
-        response = self._VixConnection._get_scsi_config(disk_paths)
-
-        self.assertEqual(response, {'scsi0:0.present': 'TRUE',
-                                    'scsi0.sharedBus': 'none',
-                                    'scsi0:0.fileName': 'fake/disk/path',
-                                    'scsi0.present': 'TRUE',
-                                    'scsi0:0.deviceType': 'scsi-hardDisk',
-                                    'scsi0.virtualDev': 'lsisas1068'})
-
-    def test_get_scsi_disk_config(self):
-        ctrl_idx = 9999
-        disk_idx = 9999
-        path = 'fake/path'
-
-        response = self._VixConnection._get_scsi_disk_config(ctrl_idx,
-                                                              disk_idx, path)
-
-        self.assertEqual(response, {'scsi9999:9999.present': 'TRUE',
-                                    'scsi9999:9999.fileName': 'fake/path',
-                                    'scsi9999:9999.deviceType':
-                                        'scsi-hardDisk'})
-
-    def test_get_ide_config(self):
-        iso_paths = ['fake/iso/path']
-
-        response = self._VixConnection._get_ide_config(iso_paths)
-
-        self.assertEqual(response, {'ide1:0.deviceType': 'cdrom-image',
-                                    'ide1:0.present': 'TRUE',
-                                    'ide1:0.clientDevice': 'FALSE',
-                                    'ide1:0.startConnected': True,
-                                    'ide1:0.fileName': 'fake/iso/path'})
-
-    def test_get_ide_iso_config(self):
-        ctrl_idx = 9999
-        disk_idx = 9999
-        fake_path = 'fake/path'
-
-        response = self._VixConnection._get_ide_iso_config(ctrl_idx,
-                                                            disk_idx,
-                                                            fake_path)
-
-        self.assertEqual(response, {'ide9999:9999.fileName': 'fake/path',
-                                    'ide9999:9999.deviceType': 'cdrom-image',
-                                    'ide9999:9999.startConnected': True,
-                                    'ide9999:9999.present': 'TRUE',
-                                    'ide9999:9999.clientDevice': 'FALSE'})
-
-    def test_get_floppy_config(self):
-        floppy_path = 'fake/floppy/path'
-
-        response = self._VixConnection._get_floppy_config(floppy_path)
-
-        self.assertEqual(response, {'floppy0.fileType': 'file',
-                                    'floppy0.clientDevice': 'FALSE',
-                                    'floppy0.present': 'TRUE',
-                                    'floppy0.fileName': 'fake/floppy/path'})
-
-    def test_get_nested_hypervisor_config(self):
-        response = self._VixConnection._get_nested_hypervisor_config()
-        self.assertEqual(response, {'vhv.enable': 'TRUE',
-                                    'vcpu.hotadd': 'FALSE',
-                                    'featMask.vm.hv.capable': 'Min:1'})
-
-    def test_get_networks_config(self):
-        networks = [('eth', 'mac')]
-
-        response = self._VixConnection._get_networks_config(networks)
-
-        self.assertEqual(response['ethernet0.networkName'], 'eth')
-        self.assertEqual(response['ethernet0.address'], 'mac')
-
-    def test_register_vm(self):
-        fake_path = 'fake/path'
-        fake_job_handle = mock.MagicMock()
-
-        vixlib.VixHost_RegisterVM = mock.MagicMock()
-        vixlib.VixHost_RegisterVM.return_value = fake_job_handle
-        vixlib.VixJob_Wait = mock.MagicMock()
-        vixlib.VixJob_Wait.return_value = None
-        vixlib.Vix_ReleaseHandle = mock.MagicMock()
-        vixutils._check_job_err_code = mock.MagicMock()
-
-        self._VixConnection.register_vm(fake_path)
-
-        vixlib.VixHost_RegisterVM.assert_called_with(
-            self._VixConnection._host_handle, fake_path, None, None)
-        vixlib.VixJob_Wait.assert_called_with(fake_job_handle,
-                                              vixlib.VIX_PROPERTY_NONE)
-        vixlib.Vix_ReleaseHandle.assert_called_with(fake_job_handle)
-        vixutils._check_job_err_code.assert_called_with(None)
-
-    def _test_unregister_vm_local(self, platform):
-        fake_path = 'fake/path'
-        pref_file_path = 'fake_file'
-        other_fake_path = 'other/fake/path'
-        fake_vmx_path_norm = 'fake/vmx/path'
-        some_object = mock.Mock()
-
-        sys.platform = mock.MagicMock()
-        sys.platform.return_value = platform
-        vixutils._get_player_preferences_file_path = mock.MagicMock()
-        vixutils._get_player_preferences_file_path.return_value = \
-            pref_file_path
-        os.path.exists = mock.MagicMock()
-        os.path.exists.return_value = True
-        win32api.GetLongPathName = mock.MagicMock()
-        win32api.GetLongPathName.return_value = fake_path
-        os.path.abspath = mock.MagicMock()
-        os.path.abspath.return_value = other_fake_path
-        os.path.normcase = mock.MagicMock()
-        os.path.normcase.return_value = fake_vmx_path_norm
-        re.match = mock.MagicMock()
-        re.match.return_value = some_object
-
-        with mock.patch('vix.vixutils.open', mock.mock_open(read_data=''),
-                        create=True) as m:
-            print m.mock_calls
-            self._VixConnection._unregister_vm_local(fake_path)
-            m.assert_called_with(pref_file_path, 'r')
-
-        if platform == 'win32':
-            win32api.GetLongPathName.assert_called_with(fake_path)
-            self.assertEqual(os.path.exists.call_count, 2)
-        else:
-            os.path.exists.assert_called_once()
-        os.path.abspath.assert_called_with(fake_path)
-        os.path.normcase.assert_called_with(other_fake_path)
-
-
-
-    def test_unregister_vm_local_platform_windows(self):
-        self._test_unregister_vm_local(platform='win32')
-
-    def test_unregister_vm_local_other_platform(self):
-        self._test_unregister_vm_local(platform='linux')
-
-    def test_unregister_vm_server(self):
-        fake_path = 'fake/path'
-        fake_job_handle = mock.MagicMock()
-        vixlib.VixHost_UnregisterVM = mock.MagicMock()
-        vixlib.VixHost_UnregisterVM.return_value = fake_job_handle
-        vixlib.VixJob_Wait = mock.MagicMock()
-        vixlib.VixJob_Wait.return_value = None
-        vixlib.Vix_ReleaseHandle = mock.MagicMock()
-        vixutils._check_job_err_code = mock.MagicMock()
-
-        self._VixConnection._unregister_vm_server(fake_path)
-
-        vixlib.VixHost_UnregisterVM.assert_called_with(
-            self._VixConnection._host_handle, fake_path, None, None)
-        vixlib.VixJob_Wait.assert_called_with(fake_job_handle,
-                                              vixlib.VIX_PROPERTY_NONE)
-        vixlib.Vix_ReleaseHandle.assert_called_with(fake_job_handle)
-        vixutils._check_job_err_code.assert_called_with(None)
-
-    def _test_unregister_vm(self, vmware):
-        fake_path = 'fake/path'
-
-        self._VixConnection._unregister_vm_local = mock.MagicMock()
-        self._VixConnection._unregister_vm_server = mock.MagicMock()
-        vixutils.get_vix_host_type = mock.MagicMock()
-        vixutils.get_vix_host_type.return_value = vmware
-
-
-        if vmware == 1:
-            self.assertRaises(Exception, self._VixConnection.unregister_vm)
-        else:
-            self._VixConnection.unregister_vm(fake_path)
-
-        vixutils.get_vix_host_type.assert_called_once()
-        if vmware == 3 or 4:
-            self._VixConnection._unregister_vm_local.assert_called_with(
-                fake_path)
-        else:
-            self._VixConnection._unregister_vm_server.assert_called_with(
-                fake_path)
-
-    def test_unregister_vm_VMWARE_WORKSTATION(self):
-        self._test_unregister_vm(vmware=3)
-
-    def test_unregister_vm_VMWARE_PLAYER(self):
-        self._test_unregister_vm(vmware=4)
-
-    def test_unregister_vm(self):
-        #not called ??get_vix_host_type raises exception??
-        self._test_unregister_vm(vmware=1)
-
-    def test_disconnect(self):
-        self._VixConnection._host_handle = mock.MagicMock()
-        vixlib.VixHost_Disconnect = mock.MagicMock()
-
-        self._VixConnection.disconnect()
-
-        vixlib.VixHost_Disconnect.assert_called_once()
-        self.assertIsNone(self._VixConnection._host_handle)
-
-    def test_vm_exists(self):
-        fake_path = 'fake/path'
-        os.path.exists = mock.MagicMock()
-        os.path.exists.return_value = True
-
-        self._VixConnection.vm_exists(fake_path)
-
-        os.path.exists.assert_called_with(fake_path)
-
-    def test_delete_vm_files(self):
+    def test_get_vmx_value(self):
         fake_path = 'fake/path'
         fake_name = 'fake_name'
-        os.path.dirname = mock.MagicMock()
-        os.path.dirname.return_value = fake_name
-        os.path.exists = mock.MagicMock()
-        os.path.exists.return_value = True
-        shutil.rmtree = mock.MagicMock()
+        pattern = r"^%s\s*=\s*\"(.*)\"$" % fake_name
+        fake_value = mock.MagicMock()
 
-        self._VixConnection.delete_vm_files(fake_path)
+        utils.get_text = mock.MagicMock()
+        utils.get_text.return_value = fake_value
+        response = vixutils.get_vmx_value(fake_path, fake_name)
+        utils.get_text.assert_called_with(fake_path,
+                                          pattern)
+        self.assertEqual(response, fake_value[0])
 
-        os.path.dirname.assert_called_with(fake_path)
-        os.path.exists.assert_called_with(fake_name)
-        shutil.rmtree.assert_called_with(fake_name)
-
-    def test_list_running_vms(self):
-        fake_job_handle = mock.MagicMock()
-        cb = mock.MagicMock()
-
-        #cannot get inside nested callback method
-        vixlib.VixEventProc = mock.MagicMock()
-        vixlib.VixEventProc.return_value = cb
-        vixlib.VixHost_FindItems = mock.MagicMock()
-        vixlib.VixHost_FindItems.return_value = fake_job_handle
-        vixlib.VixJob_Wait = mock.MagicMock()
-        vixlib.VixJob_Wait.return_value = None
-        vixlib.Vix_ReleaseHandle = mock.MagicMock()
-        vixutils._check_job_err_code = mock.MagicMock()
-
-        response = self._VixConnection.list_running_vms()
-
-        vixlib.VixEventProc.assert_called_once()
-        vixlib.VixHost_FindItems.assert_called_with(
-            self._VixConnection._host_handle, vixlib.VIX_FIND_RUNNING_VMS,
-            vixlib.VIX_INVALID_HANDLE, -1, cb, None)
-        vixlib.VixJob_Wait.assert_called_with(fake_job_handle,
-                                              vixlib.VIX_PROPERTY_NONE)
-        vixlib.Vix_ReleaseHandle.assert_called_with(fake_job_handle)
-        vixutils._check_job_err_code.assert_called_once_with(None)
-        self.assertIsNotNone(response)
-
-    def _test_get_tools_iso_path(self, platform):
-        fake_dir = 'fake_dir'
-
+    def _test_get_vix_host_type(self, platform, path_exists=False,
+                                fake_key=None, product_name=None):
+        fake_value = mock.MagicMock()
         sys.platform = platform
-        os.path.join = mock.MagicMock()
-        os.path.join.return_value = 'fake_dir/Contents/Library/isoimages'
-        vixutils._get_install_dir = mock.MagicMock()
-        vixutils._get_install_dir.return_value = fake_dir
 
-        response = self._VixConnection.get_tools_iso_path()
+        os.path.exists = mock.MagicMock()
+        os.path.exists.return_value = path_exists
 
-        if platform == "darwin":
-            self.assertEqual(response, 'fake_dir/Contents/Library/isoimages')
-        elif platform == "win32":
-            self.assertEqual(response, fake_dir)
-        else:
-            self.assertEqual(response, "/usr/lib/vmware/isoimages")
+        _winreg.EnumValue = mock.MagicMock()
+        _winreg.EnumValue.return_value = fake_value
+        _winreg.QueryValueEx = mock.MagicMock()
+        _winreg.QueryValueEx.return_value = product_name
 
-    def test_get_tools_iso_path_darwin(self):
-        self._test_get_tools_iso_path(platform="darwin")
+        if platform == 'darwin' and path_exists:
+            response = vixutils.get_vix_host_type()
+            os.path.exists.assert_called_with(
+                "/Applications/VMware Fusion.app")
+            self.assertEqual(response,
+                             vixlib.VIX_SERVICEPROVIDER_VMWARE_WORKSTATION)
 
-    def test_get_tools_iso_path_win32(self):
-        self._test_get_tools_iso_path(platform="win32")
+        elif platform == 'win32 'and fake_key is not None:
+            response = vixutils.get_vix_host_type()
+            _winreg.OpenKey = mock.MagicMock(return_value = fake_key)
+            print response
+            self.assertEqual(_winreg.OpenKey.call_count, 2)
+            _winreg.EnumValue.assert_called_with(fake_key, 0)
+            _winreg.QueryValueEx.assert_called_with(fake_key, "ProductName")
+            self.assertEqual(response, product_name)
 
-    def test_get_tools_iso_path_linux(self):
-        self._test_get_tools_iso_path(platform="linux")
+        elif platform == 'linux' and product_name == "VMware Player":
+            response = vixutils.get_vix_host_type()
+            print response
+            self.assertEqual(response, 3)
 
-    def _test_clone_vm(self, linked_clone):
-        fake_src_vmx_path = 'fake_src_path'
-        fake_dest_vmx_path = 'fake_dest_path'
-        fake_job_handle = mock.MagicMock()
-        cloned_vm_handle = mock.MagicMock()
-        fake_vm = mock.MagicMock()
-        byref_mock = mock.MagicMock()
-        if linked_clone:
-            clone_type = vixlib.VIX_CLONETYPE_LINKED
-        else:
-            clone_type = vixlib.VIX_CLONETYPE_FULL
+    def test_get_vix_host_darwin_path_exists(self):
+        self._test_get_vix_host_type('darwin', path_exists=True)
 
-        self._VixConnection.open_vm = mock.MagicMock()
-        self._VixConnection.open_vm.return_value = fake_vm
-        vixlib.VixVM_Clone = mock.MagicMock()
-        vixlib.VixVM_Clone.return_value = fake_job_handle
-        vixlib.VixHandle = mock.MagicMock()
-        vixlib.VixHandle.return_value = cloned_vm_handle
-        vixlib.VixJob_Wait = mock.MagicMock()
-        vixlib.VixJob_Wait.return_value = None
-        ctypes.byref = mock.MagicMock()
-        ctypes.byref.return_value = byref_mock
-        vixlib.Vix_ReleaseHandle = mock.MagicMock()
-        vixutils._check_job_err_code = mock.MagicMock()
+    def test_get_vix_host_win(self):
+        fake_key = mock.MagicMock()
+        self._test_get_vix_host_type('win32', fake_key=fake_key,
+                                     product_name="VMware Player")
 
-        response = self._VixConnection.clone_vm(fake_src_vmx_path,
-                                                 fake_dest_vmx_path,
-                                                 linked_clone)
-
-        self._VixConnection.open_vm.assert_called_with(fake_src_vmx_path)
-        vixlib.VixVM_Clone.assert_called_with(fake_vm.__enter__()._vm_handle,
-                                              vixlib.VIX_INVALID_HANDLE,
-                                              clone_type,
-                                              fake_dest_vmx_path, 0,
-                                              vixlib.VIX_INVALID_HANDLE,
-                                              None, None)
-        vixlib.VixHandle.assert_called_once()
-        vixlib.VixJob_Wait.assert_called_with(
-            fake_job_handle, vixlib.VIX_PROPERTY_JOB_RESULT_HANDLE,
-            byref_mock, vixlib.VIX_PROPERTY_NONE)
-        ctypes.byref.assert_called_with(cloned_vm_handle)
-        vixlib.Vix_ReleaseHandle.assert_called_with(fake_job_handle)
-        vixutils._check_job_err_code.assert_called_with(None)
-        self.assertIsInstance(response, vixutils.VixVM)
-
-    def test_clone_vm_linked_clone_true(self):
-        self._test_clone_vm(linked_clone=True)
-
-    def test_clone_vm_linked_clone_false(self):
-        self._test_clone_vm(linked_clone=False)
-
-    def test_get_software_version(self):
-        version = mock.MagicMock()
-        byref_mock = mock.MagicMock()
-
-        ctypes.c_char_p = mock.MagicMock()
-        ctypes.c_char_p.return_value = version
-        vixlib.Vix_GetProperties = mock.MagicMock()
-        vixlib.Vix_GetProperties.return_value = None
-        vixutils._check_job_err_code = mock.MagicMock()
-        vixlib.Vix_FreeBuffer = mock.MagicMock()
-        ctypes.byref = mock.MagicMock()
-        ctypes.byref.return_value = byref_mock
-
-        response = self._VixConnection.get_software_version()
-
-        ctypes.c_char_p.assert_called_once()
-        vixlib.Vix_GetProperties.assert_called_with(
-            self._VixConnection._host_handle,
-            vixlib.VIX_PROPERTY_HOST_SOFTWARE_VERSION, byref_mock,
-            vixlib.VIX_PROPERTY_NONE)
-        vixutils._check_job_err_code.assert_called_with(None)
-        vixlib.Vix_FreeBuffer.assert_called_with(version)
-        self.assertIsNotNone(response)
-
-    def test_get_host_type(self):
-        host_type = mock.MagicMock()
-        byref_mock = mock.MagicMock()
-
-        ctypes.c_int = mock.MagicMock()
-        ctypes.c_int.return_value = host_type
-        vixlib.Vix_GetProperties = mock.MagicMock()
-        vixlib.Vix_GetProperties.return_value = None
-        vixutils._check_job_err_code = mock.MagicMock()
-        ctypes.byref = mock.MagicMock()
-        ctypes.byref.return_value = byref_mock
-
-        response = self._VixConnection.get_host_type()
-
-        ctypes.c_int.assert_called_once()
-        vixlib.Vix_GetProperties.assert_called_with(
-            self._VixConnection._host_handle,
-            vixlib.VIX_PROPERTY_HOST_HOSTTYPE, byref_mock,
-            vixlib.VIX_PROPERTY_NONE)
-        vixutils._check_job_err_code.assert_called_with(None)
-        self.assertIsNotNone(response)
+    def test_get_vix_host_other_VMware_player(self):
+        self._test_get_vix_host_type('linux', product_name="VMware Player")
