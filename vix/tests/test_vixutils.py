@@ -55,7 +55,7 @@ class VixUtilsTestCase(unittest.TestCase):
             m.assert_called_with('fake/path', 'rb')
             m().readlines.assert_called_once()
 
-        self.assertIsNotNone(response)
+        self.assertTrue(response is not None)
 
     def _test_get_player_preferences_file_path(self, platform):
         sys.platform = platform
@@ -99,8 +99,8 @@ class VixUtilsTestCase(unittest.TestCase):
         elif platform == "win32":
             response = vixutils._get_install_dir()
             _winreg.OpenKey.assert_called_with(
-                _winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\VMware, Inc.\VMware"
-                             " Workstation")
+                _winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\VMware, Inc.\VMware "
+                                            "Workstation")
             _winreg.QueryValueEx.assert_called_with(fake_key.__enter__(),
                                                     "InstallPath")
             self.assertEqual(response, fake_query_response[0])
@@ -206,7 +206,7 @@ class VixUtilsTestCase(unittest.TestCase):
 
         elif platform == 'win32 'and fake_key is not None:
             response = vixutils.get_vix_host_type()
-            _winreg.OpenKey = mock.MagicMock(return_value = fake_key)
+            _winreg.OpenKey = mock.MagicMock(return_value=fake_key)
             print response
             self.assertEqual(_winreg.OpenKey.call_count, 2)
             _winreg.EnumValue.assert_called_with(fake_key, 0)

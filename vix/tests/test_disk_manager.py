@@ -34,12 +34,12 @@ DISK_TYPE_VHD = "vpc"
 DISK_TYPE_QCOW2 = "qcow2"
 DISK_TYPE_RAW = "raw"
 
+
 class VixUtilsTestCase(unittest.TestCase):
     """Unit tests for utility class"""
 
     def setUp(self):
         self._disk_manager = disk_manager.DiskManager()
-
 
     def _test_get_vdisk_man_path(self, platform_win32=False):
         fake_vdisk_man_path = 'fake/path'
@@ -47,7 +47,7 @@ class VixUtilsTestCase(unittest.TestCase):
         os.path.join = mock.MagicMock()
         vixutils.get_vix_bin_path = mock.MagicMock()
         os.path.join.return_value = fake_vdisk_man_path
-        vixutils.get_vix_bin_path.return_value = fake_vix_result        
+        vixutils.get_vix_bin_path.return_value = fake_vix_result
         sys.platform = 'not_win32'
         if platform_win32:
             sys.platform = 'win32'
@@ -69,26 +69,24 @@ class VixUtilsTestCase(unittest.TestCase):
         vixutils.get_vix_bin_path = mock.MagicMock()
         fake_check_vdisk_man_exists = mock.MagicMock()
         self._disk_manager._get_vdisk_man_path = mock.MagicMock()
-        fake_get_vdisk_man_path = mock.MagicMock()
-        self._disk_manager._get_vdisk_man_path.return_value = \
-                                                        fake_get_vdisk_man_path
+        fake_vdisk_man = mock.MagicMock()
+        self._disk_manager._get_vdisk_man_path.return_value = fake_vdisk_man
         os.path.exists = mock.MagicMock()
         os.path.exists.return_value = fake_check_vdisk_man_exists
 
         response = self._disk_manager._check_vdisk_man_exists()
         self.assertEqual(response, fake_check_vdisk_man_exists)
         self._disk_manager._get_vdisk_man_path.assert_called_once()
-        os.path.exists.assert_called_with(fake_get_vdisk_man_path)
+        os.path.exists.assert_called_with(fake_vdisk_man)
 
     def test_create_disk_vdisk_man(self):
         self._disk_manager._get_vdisk_man_path = mock.MagicMock()
-        fake_get_vdisk_man_path = 'fake/path'
-        self._disk_manager._get_vdisk_man_path.return_value = \
-                                                        fake_get_vdisk_man_path
+        fake_vdisk_man = 'fake/path'
+        self._disk_manager._get_vdisk_man_path.return_value = fake_vdisk_man
         fake_size_mb = "1"
         fake_disk_path = "fake/disk/path"
-        fake_args = [fake_get_vdisk_man_path, "-c", "-s", "%sMB" % fake_size_mb, 
-                                    "-a", "lsilogic", "-t", "0", fake_disk_path]
+        fake_args = [fake_vdisk_man, "-c", "-s", "%sMB" % fake_size_mb,
+                     "-a", "lsilogic", "-t", "0", fake_disk_path]
         self._disk_manager._exec_cmd = mock.MagicMock()
 
         self._disk_manager._create_disk_vdisk_man(fake_disk_path, fake_size_mb)
@@ -101,8 +99,8 @@ class VixUtilsTestCase(unittest.TestCase):
         subprocess.Popen = mock.MagicMock()
         subprocess.Popen.return_value = fake_process
         fake_process.communicate = mock.MagicMock()
-        fake_out =mock.MagicMock()
-        fake_error =mock.MagicMock()
+        fake_out = mock.MagicMock()
+        fake_error = mock.MagicMock()
         fake_process.communicate = mock.MagicMock()
         fake_process.communicate.return_value = (fake_out, fake_error)
         fake_process.returncode = exception
@@ -135,23 +133,24 @@ class VixUtilsTestCase(unittest.TestCase):
         fake_file_size = mock.MagicMock()
         fake_out.split = mock.MagicMock()
         #is it ok if I put return values or should I mock re.match?
-        fake_out.split.return_value = ['file format: qcow2', 
-                                        'virtual size: 20G (21474836480 bytes)']
+        fake_out.split.return_value = [
+            'file format: qcow2', 'virtual size: 20G (21474836480 bytes)']
         os.path.getsize = mock.MagicMock()
         os.path.getsize.return_value = fake_file_size
-        
+
         if exception:
             fake_out.split.return_value = ['file format: qcow2']
-            self.assertRaises(utils.VixException, 
-                              self._disk_manager.get_disk_info, fake_disk_path)
+            self.assertRaises(utils.VixException,
+                              self._disk_manager.get_disk_info,
+                              fake_disk_path)
         else:
             response = self._disk_manager.get_disk_info(fake_disk_path)
             self.assertEqual(response, (fake_format, fake_internal_size,
-                                    fake_file_size))            
+                                        fake_file_size))
             os.path.getsize.assert_called_with(fake_disk_path)
 
         self._disk_manager._exec_cmd.assert_called_with(fake_args)
-        fake_out.split.assert_called_with(os.linesep)        
+        fake_out.split.assert_called_with(os.linesep)
 
     def test_get_disk_info(self):
         self._test_get_disk_info()
@@ -163,15 +162,15 @@ class VixUtilsTestCase(unittest.TestCase):
         fake_disk_type = "disk type"
         fake_disk_path = "disk_path"
         fake_size_mb = "1"
-        fake_args = args = ["qemu-img", "create", "-f", fake_disk_type, 
-                                           fake_disk_path, "%sM" % fake_size_mb]
+        fake_args = ["qemu-img", "create", "-f", fake_disk_type,
+                     fake_disk_path, "%sM" % fake_size_mb]
         self._disk_manager._exec_cmd = mock.MagicMock()
 
-        self._disk_manager._create_disk_qemu(fake_disk_path, fake_size_mb, 
+        self._disk_manager._create_disk_qemu(fake_disk_path, fake_size_mb,
                                              fake_disk_type)
         self._disk_manager._exec_cmd.assert_called_with(fake_args)
 
-    def _test_create_disk(self, disk_exists = True):
+    def _test_create_disk(self, disk_exists=True):
         fake_disk_type = DISK_TYPE_VMDK
         fake_disk_path = "disk_path"
         fake_size_mb = "1"
@@ -179,13 +178,13 @@ class VixUtilsTestCase(unittest.TestCase):
         self._disk_manager._check_vdisk_man_exists.return_value = disk_exists
         if disk_exists:
             self._disk_manager._create_disk_vdisk_man = mock.MagicMock()
-            self._disk_manager.create_disk(fake_disk_path, fake_size_mb, 
+            self._disk_manager.create_disk(fake_disk_path, fake_size_mb,
                                            fake_disk_type)
             self._disk_manager._create_disk_vdisk_man.assert_called_with(
-                                                   fake_disk_path, fake_size_mb)
+                fake_disk_path, fake_size_mb)
         else:
             self._disk_manager._create_disk_qemu = mock.MagicMock()
-            self._disk_manager.create_disk(fake_disk_path, fake_size_mb, 
+            self._disk_manager.create_disk(fake_disk_path, fake_size_mb,
                                            fake_disk_type)
             self._disk_manager._create_disk_qemu.assert_called_with(
                 fake_disk_path, fake_size_mb, fake_disk_type)
@@ -196,19 +195,18 @@ class VixUtilsTestCase(unittest.TestCase):
     def test_create_disk_with_qemu(self):
         self._test_create_disk()
 
-    def test_resize_disk_vdisk_man(self):        
+    def test_resize_disk_vdisk_man(self):
         fake_disk_path = "disk_path"
         fake_new_size_mb = "1"
-        fake_vdisk_man_path = "disk_path_man"
+        fake_vdisk_man = "disk_path_man"
         self._disk_manager._get_vdisk_man_path = mock.MagicMock()
-        self._disk_manager._get_vdisk_man_path.return_value = \
-                                                            fake_vdisk_man_path
-        fake_args = [fake_vdisk_man_path, "-x", 
-                                    "%sMB" % fake_new_size_mb, fake_disk_path]
+        self._disk_manager._get_vdisk_man_path.return_value = fake_vdisk_man
+        fake_args = [fake_vdisk_man, "-x", "%sMB" % fake_new_size_mb,
+                     fake_disk_path]
         self._disk_manager._exec_cmd = mock.MagicMock()
 
-        self._disk_manager._resize_disk_vdisk_man(fake_disk_path, 
-                                                            fake_new_size_mb)
+        self._disk_manager._resize_disk_vdisk_man(fake_disk_path,
+                                                  fake_new_size_mb)
         self._disk_manager._exec_cmd.assert_called_with(fake_args)
         self._disk_manager._get_vdisk_man_path.assert_called_once()
 
@@ -220,26 +218,25 @@ class VixUtilsTestCase(unittest.TestCase):
         os.path.exists = mock.MagicMock()
         os.path.exists.return_value = path_exists
         os.remove = mock.MagicMock()
-        fake_args_1 = ["qemu-img", "convert", "-O", DISK_TYPE_RAW, fake_disk_path,
-                    fake_tmp_disk_path]
-        fake_args_2 =["qemu-img", "resize", fake_tmp_disk_path, "%sM" % fake_new_size_mb]
 
         fake_args_3 = ["qemu-img", "convert", "-f", DISK_TYPE_RAW, "-O",
-                    fake_new_disk_type, fake_tmp_disk_path, fake_disk_path]
+                       fake_new_disk_type, fake_tmp_disk_path, fake_disk_path]
         self._disk_manager._exec_cmd = mock.MagicMock()
 
         if exception:
             self._disk_manager._exec_cmd.side_effect = Exception
             self.assertRaises(Exception, self._disk_manager._resize_disk_qemu,
-                    fake_disk_path, fake_new_size_mb, fake_new_disk_type)
+                              fake_disk_path, fake_new_size_mb,
+                              fake_new_disk_type)
         else:
-            self._disk_manager._resize_disk_qemu(fake_disk_path, fake_new_size_mb,
-                fake_new_disk_type)
-            #How can I test more than one call to the same method with params??
+            self._disk_manager._resize_disk_qemu(fake_disk_path,
+                                                 fake_new_size_mb,
+                                                 fake_new_disk_type)
+            #How can I test more than one call to the same method with params?
             self._disk_manager._exec_cmd.assert_called_with(fake_args_3)
 
         os.path.exists.assert_called_with(fake_tmp_disk_path)
-        if path_exists:           
+        if path_exists:
             os.remove.assert_called_with(fake_tmp_disk_path)
 
     def test_resize_disk_vdisk_qemu_path_exists(self):
@@ -251,7 +248,7 @@ class VixUtilsTestCase(unittest.TestCase):
     def test_resize_disk_vdisk_qemu_path_exists_with_exception(self):
         self._test_resize_disk_vdisk_qemu(exception=True)
 
-    def _test_resize_disk(self, disk_exists = True):
+    def _test_resize_disk(self, disk_exists=True):
         fake_new_disk_type = DISK_TYPE_VMDK
         fake_disk_path = "disk_path"
         fake_new_size_mb = "1"
@@ -259,13 +256,13 @@ class VixUtilsTestCase(unittest.TestCase):
         self._disk_manager._check_vdisk_man_exists.return_value = disk_exists
         if disk_exists:
             self._disk_manager._resize_disk_vdisk_man = mock.MagicMock()
-            self._disk_manager.resize_disk(fake_disk_path, fake_new_size_mb, 
+            self._disk_manager.resize_disk(fake_disk_path, fake_new_size_mb,
                                            fake_new_disk_type)
             self._disk_manager._resize_disk_vdisk_man.assert_called_with(
-                                                   fake_disk_path, fake_new_size_mb)
+                fake_disk_path, fake_new_size_mb)
         else:
             self._disk_manager._resize_disk_qemu = mock.MagicMock()
-            self._disk_manager.resize_disk(fake_disk_path, fake_new_size_mb, 
+            self._disk_manager.resize_disk(fake_disk_path, fake_new_size_mb,
                                            fake_new_disk_type)
             self._disk_manager._resize_disk_qemu.assert_called_with(
                 fake_disk_path, fake_new_size_mb, fake_new_disk_type)
@@ -275,11 +272,3 @@ class VixUtilsTestCase(unittest.TestCase):
 
     def test_resize_disku(self):
         self._test_resize_disk()
-
-
-
-
-
-
-
-

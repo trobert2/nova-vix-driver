@@ -45,10 +45,10 @@ class VixDriverTestCase(unittest.TestCase):
         vixutils.VixConnection = mock.MagicMock(return_value=self._conn)
         pathutils.PathUtils = mock.MagicMock(return_value=self._pathutils)
         image_cache.ImageCache = mock.MagicMock(return_value=self._image_cache)
-        self._VixDriver = driver.VixDriver(virtapi)
+        self._driver = driver.VixDriver(virtapi)
 
     def test_list_instances(self):
-        self._VixDriver.list_instances()
+        self._driver.list_instances()
         self._conn.list_running_vms.assert_called_once()
 
     def test_delete_existing_instance(self):
@@ -56,7 +56,7 @@ class VixDriverTestCase(unittest.TestCase):
         fake_path = 'fake/path'
         self._pathutils.get_vmx_path.return_value = fake_path
 
-        self._VixDriver._delete_existing_instance(fake_instance_name)
+        self._driver._delete_existing_instance(fake_instance_name)
 
         self._pathutils.get_vmx_path.assert_called_with('fake_name')
         self._conn.vm_exists.assert_called_with(fake_path)
@@ -80,8 +80,8 @@ class VixDriverTestCase(unittest.TestCase):
         vixutils.get_vmx_value.return_value = fake_file_name
         vixutils.set_vmx_value = mock.MagicMock()
 
-        self._VixDriver._clone_vmdk_vm(fake_src_vmdk, fake_root_vmdk_path,
-                                       fake_dest_vmx_path)
+        self._driver._clone_vmdk_vm(fake_src_vmdk, fake_root_vmdk_path,
+                                    fake_dest_vmx_path)
 
         self._conn.create_vm.assert_called_once()
         self._conn.clone_vm.assert_called_with(fake_split[0] + ".vmx",
@@ -95,7 +95,7 @@ class VixDriverTestCase(unittest.TestCase):
         vixutils.get_vix_host_type = mock.MagicMock(
             return_value=vixutils.VIX_VMWARE_PLAYER)
         self.assertRaises(NotImplementedError,
-                          self._VixDriver._check_player_compatibility, True)
+                          self._driver._check_player_compatibility, True)
 
     def _test_spawn(self, cow):
 
@@ -107,41 +107,39 @@ class VixDriverTestCase(unittest.TestCase):
         fake_network_info = mock.MagicMock()
         fake_block_device_info = mock.MagicMock()
         fake_image_info = mock.MagicMock()
-        fake_iso_image_ids = 'fakeid'
+        fake_iso_image_ids = ['fakeid']
         fake_base_vmdk_path = 'fake/base/vmdk/path'
         fake_root_vmdk_path = 'fake/root/vmdk/path'
         fake_vmx_path = 'fake/vmx/path'
         fake_floppy_path = 'fake/floppy/path'
 
         self._image_cache.get_image_info.return_value = fake_image_info
-        self._VixDriver._check_player_compatibility = mock.MagicMock()
-        self._VixDriver._delete_existing_instance =  mock.MagicMock()
-        self._VixDriver._clone_vmdk_vm =  mock.MagicMock()
+        self._driver._check_player_compatibility = mock.MagicMock()
+        self._driver._delete_existing_instance = mock.MagicMock()
+        self._driver._clone_vmdk_vm = mock.MagicMock()
         self._image_cache.get_cached_image.return_value = fake_base_vmdk_path
         self._pathutils.get_root_vmdk_path.return_value = fake_root_vmdk_path
         self._pathutils.get_vmx_path.return_value = fake_vmx_path
         self._pathutils.get_floppy_path.return_value = fake_floppy_path
         os.path.join = mock.MagicMock(return_value=fake_base_vmdk_path)
         fake_image_info.get().get().lower.return_value = str(cow).lower()
-        fake_image_info.get().get().split.return_value = fake_iso_image_ids\
-            .split(',')
+        fake_image_info.get().get().split.return_value = fake_iso_image_ids
         utils.get_free_port = mock.MagicMock()
         utils.get_free_port.return_value = 9999
 
-        self._VixDriver.spawn(context=fake_context, instance=fake_instance,
-                              image_meta=fake_image_meta,
-                              injected_files=fake_injected_files,
-                              admin_password=fake_admin_password,
-                              network_info=fake_network_info,
-                              block_device_info=fake_block_device_info)
+        self._driver.spawn(context=fake_context, instance=fake_instance,
+                           image_meta=fake_image_meta,
+                           injected_files=fake_injected_files,
+                           admin_password=fake_admin_password,
+                           network_info=fake_network_info,
+                           block_device_info=fake_block_device_info)
         print fake_image_info.get().get.mock_calls
-
 
         self._image_cache.get_image_info.assert_called_with(
             fake_context, fake_instance['image_ref'])
 
-        self._VixDriver._check_player_compatibility.assert_called_with(cow)
-        self._VixDriver._delete_existing_instance.assert_called_with(
+        self._driver._check_player_compatibility.assert_called_with(cow)
+        self._driver._delete_existing_instance.assert_called_with(
             fake_instance['name'])
         self._pathutils.create_instance_dir.assert_called_with(
             fake_instance['name'])
@@ -150,7 +148,7 @@ class VixDriverTestCase(unittest.TestCase):
             fake_instance['name'])
         self._pathutils.get_vmx_path.assert_called_with(fake_instance['name'])
         if cow:
-            self._VixDriver._clone_vmdk_vm.assert_called_with(
+            self._driver._clone_vmdk_vm.assert_called_with(
                 fake_base_vmdk_path, fake_root_vmdk_path, fake_vmx_path)
             self.assertEqual(self._pathutils.copy.call_count, 1)
             self._conn.update_vm.assert_called_with(
@@ -203,13 +201,13 @@ class VixDriverTestCase(unittest.TestCase):
         self._pathutils.get_vmx_path.return_value = fake_path
         self._conn.vm_exists.return_value = vm_exists
         if not vm_exists:
-            self.assertRaises(Exception, self._VixDriver._exec_vm_action,
+            self.assertRaises(Exception, self._driver._exec_vm_action,
                               fake_instance, fake_action)
         else:
-            response = self._VixDriver._exec_vm_action(fake_instance,
-                                                       fake_action)
+            response = self._driver._exec_vm_action(fake_instance,
+                                                    fake_action)
             self._conn.open_vm.assert_called_with(fake_path)
-            self.assertIsNotNone(response)
+            self.assertTrue(response is not None)
 
     def test_exec_vm_action_vm_exists_false(self):
         self._test_exec_vm_action(False)
@@ -222,16 +220,16 @@ class VixDriverTestCase(unittest.TestCase):
         fake_context = mock.MagicMock()
         fake_network_info = mock.MagicMock()
         vixutils.reboot = mock.MagicMock()
-        self._VixDriver.reboot(fake_context, fake_instance,
-                               fake_network_info, reboot_type=None)
+        self._driver.reboot(fake_context, fake_instance,
+                            fake_network_info, reboot_type=None)
         vixutils.reboot.assert_called_once()
 
     def test_destroy(self):
         fake_instance = mock.MagicMock()
         fake_network_info = mock.MagicMock()
-        self._VixDriver._delete_existing_instance = mock.MagicMock()
-        self._VixDriver.destroy(fake_instance, fake_network_info)
-        self._VixDriver._delete_existing_instance.assert_called_with(
+        self._driver._delete_existing_instance = mock.MagicMock()
+        self._driver.destroy(fake_instance, fake_network_info)
+        self._driver._delete_existing_instance.assert_called_with(
             fake_instance['name'], True)
 
     def test_get_info(self):
@@ -240,10 +238,10 @@ class VixDriverTestCase(unittest.TestCase):
         vixutils.get_power_state = mock.MagicMock(
             return_value=vixlib.VIX_POWERSTATE_POWERED_ON)
 
-        response = self._VixDriver.get_info(fake_instance)
+        response = self._driver.get_info(fake_instance)
         print response
         vixutils.get_power_state.assert_called_once()
-        self.assertIsNotNone(response)
+        self.assertTrue(response is not None)
 
     def test_attach_volume(self):
         fake_instance = mock.MagicMock()
@@ -252,7 +250,7 @@ class VixDriverTestCase(unittest.TestCase):
         fake_mountpoint = mock.MagicMock()
 
         self.assertRaises(NotImplementedError,
-                          self._VixDriver.attach_volume, fake_context,
+                          self._driver.attach_volume, fake_context,
                           fake_connection_info, fake_instance,
                           fake_mountpoint)
 
@@ -262,14 +260,14 @@ class VixDriverTestCase(unittest.TestCase):
         fake_mountpoint = mock.MagicMock()
 
         self.assertRaises(NotImplementedError,
-                          self._VixDriver.detach_volume,
+                          self._driver.detach_volume,
                           fake_connection_info,  fake_instance,
                           fake_mountpoint)
 
     def test_get_volume_connector(self):
         fake_instance = mock.MagicMock()
         self.assertRaises(NotImplementedError,
-                          self._VixDriver.get_volume_connector,
+                          self._driver.get_volume_connector,
                           fake_instance)
 
     def test_get_host_memory_info(self):
@@ -277,7 +275,7 @@ class VixDriverTestCase(unittest.TestCase):
         free_mem = 1073741824
         utils.get_host_memory_info = mock.MagicMock()
         utils.get_host_memory_info.return_value = (total_mem, free_mem)
-        response = self._VixDriver._get_host_memory_info()
+        response = self._driver._get_host_memory_info()
         utils.get_host_memory_info.assert_called_once()
         self.assertEqual(response, (2048, 1024, 1024))
 
@@ -289,22 +287,22 @@ class VixDriverTestCase(unittest.TestCase):
         utils.get_disk_info.return_value = (total_disk, free_disk)
         self._pathutils.get_instances_dir = mock.MagicMock()
         self._pathutils.get_instances_dir.return_value = fake_dir
-        response = self._VixDriver._get_local_hdd_info_gb()
+        response = self._driver._get_local_hdd_info_gb()
         utils.get_disk_info.assert_called_once_with(fake_dir)
         self.assertEqual(response, (2, 1, 1))
 
     def test_get_hypervisor_version(self):
         self._conn.get_software_version.return_value = 10
-        response = self._VixDriver._get_hypervisor_version()
+        response = self._driver._get_hypervisor_version()
         self._conn.get_software_version.assert_called_once()
         self.assertEqual(response, 10)
 
     def test_get_available_resource(self):
         fake_nodename = 'fake_name'
-        total_disk = 2147483648
-        free_disk = 1073741824
-        total_mem = 2147483648
-        free_mem = 1073741824
+        total_disk = 2 * 1024 * 1024 * 1024
+        free_disk = 1 * 1024 * 1024 * 1024
+        total_mem = 2048 * 1024 * 1024
+        free_mem = 1024 * 1024 * 1024
         vcpus = 2
         fake_dir = 'fake dir'
         compare_dict = {'vcpus': vcpus,
@@ -334,7 +332,7 @@ class VixDriverTestCase(unittest.TestCase):
         utils.get_cpu_count = mock.MagicMock()
         utils.get_cpu_count.return_value = vcpus
 
-        response = self._VixDriver.get_available_resource(fake_nodename)
+        response = self._driver.get_available_resource(fake_nodename)
         utils.get_host_memory_info.assert_called_once()
         utils.get_disk_info.assert_called_once_with(fake_dir)
         self._conn.get_software_version.assert_called_once()
@@ -343,10 +341,10 @@ class VixDriverTestCase(unittest.TestCase):
         self.assertEqual(response, compare_dict)
 
     def test_update_stats(self):
-        total_disk = 2147483648
-        free_disk = 1073741824
-        total_mem = 2147483648
-        free_mem = 1073741824
+        total_disk = 2 * 1024 * 1024 * 1024
+        free_disk = 1 * 1024 * 1024 * 1024
+        total_mem = 2048 * 1024 * 1024
+        free_mem = 1024 * 1024 * 1024
         fake_dir = 'fake dir'
         compare_dict = {'host_memory_total': 2048,
                         'host_memory_overhead': 1024,
@@ -357,8 +355,7 @@ class VixDriverTestCase(unittest.TestCase):
                         'disk_available': 1,
                         'hypervisor_hostname': 'fake_hostname',
                         'supported_instances': [('i686', 'vix', 'hvm'),
-                                                ('x86_64', 'vix', 'hvm')],}
-
+                                                ('x86_64', 'vix', 'hvm')]}
         platform.node = mock.MagicMock()
         platform.node.return_value = 'fake_hostname'
         utils.get_host_memory_info = mock.MagicMock()
@@ -368,16 +365,16 @@ class VixDriverTestCase(unittest.TestCase):
         self._pathutils.get_instances_dir = mock.MagicMock()
         self._pathutils.get_instances_dir.return_value = fake_dir
 
-        self._VixDriver._update_stats()
+        self._driver._update_stats()
 
         utils.get_host_memory_info.assert_called_once()
         utils.get_disk_info.assert_called_once_with(fake_dir)
         platform.node.assert_called_once()
-        self.assertEqual(self._VixDriver._stats, compare_dict)
+        self.assertEqual(self._driver._stats, compare_dict)
 
     def _test_get_host_stats(self, refresh):
-        self._VixDriver.get_host_stats(refresh=refresh)
-        self.assertIsNotNone(self._VixDriver._stats)
+        self._driver.get_host_stats(refresh=refresh)
+        self.assertTrue(self._driver._stats is not None)
 
     def test_get_host_stats_refresh_true(self):
         self._test_get_host_stats(True)
@@ -385,7 +382,7 @@ class VixDriverTestCase(unittest.TestCase):
     def test_get_host_stats_refresh_false(self):
         self._test_get_host_stats(False)
 
-    def _test_snapshot(self, implemented):
+    def _test_snapshot(self, feature_supported):
         fake_name = 'fake name'
         fake_instance = mock.MagicMock()
         fake_context = mock.MagicMock()
@@ -400,14 +397,15 @@ class VixDriverTestCase(unittest.TestCase):
         vixutils.VixVM.remove_snapshot = mock.MagicMock()
         vixutils.get_vix_host_type = mock.MagicMock()
 
-        if not implemented:
-            vixutils.get_vix_host_type.return_value = vixutils.VIX_VMWARE_PLAYER
-            self.assertRaises(NotImplementedError, self._VixDriver.snapshot,
+        if not feature_supported:
+            host_type = vixutils.VIX_VMWARE_PLAYER
+            vixutils.get_vix_host_type.return_value = host_type
+            self.assertRaises(NotImplementedError, self._driver.snapshot,
                               fake_context, fake_instance, fake_name,
                               fake_update_task_state)
         else:
-            self._VixDriver.snapshot(fake_context, fake_instance, fake_name,
-                                     fake_update_task_state)
+            self._driver.snapshot(fake_context, fake_instance, fake_name,
+                                  fake_update_task_state)
 
             vixutils.get_vix_host_type.assert_called_once()
             self._pathutils.get_vmx_path.assert_called_with(
@@ -430,32 +428,32 @@ class VixDriverTestCase(unittest.TestCase):
     def test_pause(self):
         fake_instance = mock.MagicMock()
         vixutils.VixVM.pause = mock.MagicMock()
-        self._VixDriver.pause(fake_instance)
+        self._driver.pause(fake_instance)
         vixutils.VixVM.pause.assert_called_once()
 
     def test_unpause(self):
         fake_instance = mock.MagicMock()
         vixutils.VixVM.unpause = mock.MagicMock()
-        self._VixDriver.unpause(fake_instance)
+        self._driver.unpause(fake_instance)
         vixutils.VixVM.unpause.assert_called_once()
 
     def test_suspend(self):
         fake_instance = mock.MagicMock()
         vixutils.VixVM.suspend = mock.MagicMock()
-        self._VixDriver.suspend(fake_instance)
+        self._driver.suspend(fake_instance)
         vixutils.VixVM.suspend.assert_called_once()
 
     def test_resume(self):
         fake_instance = mock.MagicMock()
         fake_network_info = mock.MagicMock()
         vixutils.VixVM.power_on = mock.MagicMock()
-        self._VixDriver.resume(fake_instance, fake_network_info)
+        self._driver.resume(fake_instance, fake_network_info)
         vixutils.VixVM.power_on.assert_called_once()
 
     def test_power_off(self):
         fake_instance = mock.MagicMock()
         vixutils.VixVM.power_off = mock.MagicMock()
-        self._VixDriver.power_off(fake_instance)
+        self._driver.power_off(fake_instance)
         vixutils.VixVM.power_off.assert_called_once()
 
     def test_power_on(self):
@@ -463,8 +461,8 @@ class VixDriverTestCase(unittest.TestCase):
         fake_context = mock.MagicMock()
         fake_network_info = mock.MagicMock()
         vixutils.VixVM.power_on = mock.MagicMock()
-        self._VixDriver.power_on(fake_instance, fake_context,
-                                 fake_network_info)
+        self._driver.power_on(fake_instance, fake_context,
+                              fake_network_info)
         vixutils.VixVM.power_on.assert_called_once()
 
     def test_live_migration(self):
@@ -473,7 +471,7 @@ class VixDriverTestCase(unittest.TestCase):
         fake_dest = 'fake/dest'
         fake_post_method = mock.MagicMock()
         fake_instance = mock.MagicMock()
-        self.assertRaises(NotImplementedError, self._VixDriver.live_migration,
+        self.assertRaises(NotImplementedError, self._driver.live_migration,
                           fake_context, fake_instance, fake_dest,
                           fake_post_method, fake_recover_method)
 
@@ -484,7 +482,7 @@ class VixDriverTestCase(unittest.TestCase):
         fake_network_info = mock.MagicMock()
         fake_instance = mock.MagicMock()
         self.assertRaises(NotImplementedError,
-                          self._VixDriver.pre_live_migration, fake_context,
+                          self._driver.pre_live_migration, fake_context,
                           fake_instance, fake_block_device_info,
                           fake_network_info, fake_disk)
 
@@ -493,7 +491,7 @@ class VixDriverTestCase(unittest.TestCase):
         fake_network_info = mock.MagicMock()
         fake_instance_ref = mock.MagicMock()
         self.assertRaises(NotImplementedError,
-                          self._VixDriver.post_live_migration_at_destination,
+                          self._driver.post_live_migration_at_destination,
                           fake_context, fake_instance_ref, fake_network_info)
 
     def test_check_can_live_migrate_destination(self):
@@ -502,7 +500,7 @@ class VixDriverTestCase(unittest.TestCase):
         fake_dest_computer = mock.MagicMock()
         fake_instance_ref = mock.MagicMock()
         self.assertRaises(NotImplementedError,
-                          self._VixDriver.check_can_live_migrate_destination,
+                          self._driver.check_can_live_migrate_destination,
                           fake_context, fake_instance_ref,
                           fake_src_computer, fake_dest_computer)
 
@@ -511,7 +509,7 @@ class VixDriverTestCase(unittest.TestCase):
         fake_dest_data = mock.MagicMock()
         self.assertRaises(
             NotImplementedError,
-            self._VixDriver.check_can_live_migrate_destination_cleanup,
+            self._driver.check_can_live_migrate_destination_cleanup,
             fake_context, fake_dest_data)
 
     def test_check_can_live_migrate_source(self):
@@ -519,33 +517,34 @@ class VixDriverTestCase(unittest.TestCase):
         fake_instance_ref = mock.MagicMock()
         fake_dest_data = mock.MagicMock()
         self.assertRaises(NotImplementedError,
-                          self._VixDriver.check_can_live_migrate_source,
+                          self._driver.check_can_live_migrate_source,
                           fake_context, fake_instance_ref, fake_dest_data)
 
-
     def test_get_host_ip_addr(self):
-        response = self._VixDriver.get_host_ip_addr()
-        self.assertIsNotNone(response)
+        response = self._driver.get_host_ip_addr()
+        self.assertTrue(response is not None)
 
     def _test_get_vnc_console(self, vnc_enabled):
         fake_instance = mock.MagicMock()
         fake_path = 'fake/path'
         vnc_port = 9999
-        self._conn.open_vm().__enter__().get_vnc_settings.return_value = (
+        open_vm_enter = mock.MagicMock()
+        self._conn.open_vm().__enter__.return_value = open_vm_enter
+        open_vm_enter.get_vnc_settings.return_value = (
             vnc_enabled, vnc_port)
         self._pathutils.get_vmx_path.return_value = fake_path
 
         if vnc_enabled:
-            response = self._VixDriver.get_vnc_console(fake_instance)
+            response = self._driver.get_vnc_console(fake_instance)
             self._pathutils.get_vmx_path.assert_called_with(
                 fake_instance['name'])
             self._conn.open_vm.assert_called_with(fake_path)
-            self._conn.open_vm().__enter__().get_vnc_settings\
-                .assert_called_once()
-            self.assertIsNotNone(response)
+            open_vm_enter.get_vnc_settings.assert_called_once()
+
+            self.assertTrue(response is not None)
         else:
             self.assertRaises(utils.VixException,
-                              self._VixDriver.get_vnc_console, fake_instance)
+                              self._driver.get_vnc_console, fake_instance)
 
     def test_get_vnc_console(self):
         self._test_get_vnc_console(True)
@@ -555,5 +554,5 @@ class VixDriverTestCase(unittest.TestCase):
 
     def test_get_console_output(self):
         fake_instance = mock.MagicMock()
-        reponse = self._VixDriver.get_console_output(fake_instance)
+        reponse = self._driver.get_console_output(fake_instance)
         self.assertEqual(reponse, '')
